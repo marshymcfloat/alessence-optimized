@@ -1,0 +1,82 @@
+.rail {
+  --nav-purple: #7652b5;
+  --nav-purple-dark: #493568;
+  --nav-blue: #d9eaf5;
+  --nav-coral: #f6d8cc;
+  --nav-mint: #dcece3;
+  overflow: hidden;
+  background: #f8f4fa;
+  border-right: 1px solid #e7dfe9;
+}
+
+.rail::before {
+  content: "";
+  position: absolute;
+  width: 10rem;
+  aspect-ratio: 1;
+  top: -6rem;
+  right: -5rem;
+  border-radius: 50%;
+  background: #eadff5;
+}
+
+.brandArea { position: relative; z-index: 1; display: grid; gap: .2rem; }
+.brandArea :global(.brand) { font-size: 1.05rem; }
+.brandArea :global(.brand-mark) { width: 40px; height: 40px; }
+.brandArea > span { padding-left: 3rem; color: #8a7d8f; font-size: .62rem; font-weight: 700; letter-spacing: .025em; }
+
+.createCard {
+  position: relative;
+  min-height: 5.4rem;
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  align-items: center;
+  gap: .7rem;
+  margin-top: 2rem;
+  padding: .85rem;
+  overflow: hidden;
+  border-radius: 18px;
+  color: white;
+  background: var(--nav-purple-dark);
+  box-shadow: 0 14px 28px rgba(73,53,104,.18);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+.createCard::after { content: ""; position: absolute; width: 4rem; aspect-ratio: 1; right: -2rem; top: -2rem; border: .65rem solid rgba(255,255,255,.1); border-radius: 50%; }
+.createCard:hover { transform: translateY(-2px); box-shadow: 0 17px 30px rgba(73,53,104,.24); }
+.createIcon { width: 2.35rem; aspect-ratio: 1; display: grid; place-items: center; border-radius: 11px; color: var(--nav-purple-dark); background: #f2e9fc; }
+.createCard strong, .createCard small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.createCard strong { font-size: .75rem; }
+.createCard small { margin-top: .1rem; color: #d7cae4; font-size: .59rem; }
+
+.navGroup { margin-top: 2rem; }
+.navGroup > p { margin: 0 0 .6rem .65rem; color: #9a8da0; font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.navGroup nav { display: grid; gap: .35rem; margin-top: 0; }
+.navLink { position: relative; min-height: 3.3rem; display: grid; grid-template-columns: 2.25rem minmax(0,1fr) auto; align-items: center; gap: .65rem; padding: .45rem .65rem; border-radius: 14px; color: #6f6376; font-size: .78rem; font-weight: 750; transition: color 180ms ease, background 180ms ease, transform 180ms ease; }
+.navLink:hover { color: var(--nav-purple-dark); background: rgba(255,255,255,.7); transform: translateX(2px); }
+.navLink.active { color: var(--nav-purple-dark); background: #fff; box-shadow: 0 8px 22px rgba(62,45,75,.07); }
+.navLink.active::before { content: ""; position: absolute; left: -.35rem; width: 3px; height: 1.45rem; border-radius: 99px; background: var(--nav-purple); }
+.iconWrap { width: 2.25rem; aspect-ratio: 1; display: grid; place-items: center; border-radius: 11px; }
+.purple .iconWrap { color: #684b99; background: #e9def8; }
+.blue .iconWrap { color: #34637c; background: var(--nav-blue); }
+.coral .iconWrap { color: #8b4939; background: var(--nav-coral); }
+.mint .iconWrap { color: #436d57; background: var(--nav-mint); }
+.linkArrow { opacity: 0; transform: translateX(-4px); transition: opacity 180ms ease, transform 180ms ease; }
+.navLink:hover .linkArrow, .navLink.active .linkArrow { opacity: .55; transform: translateX(0); }
+
+.account { margin-top: auto; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: .65rem; padding: .75rem; border: 1px solid #e7dfe9; border-radius: 16px; background: rgba(255,255,255,.72); }
+.avatar { width: 2.35rem; aspect-ratio: 1; display: grid; place-items: center; border-radius: 12px; color: white; background: #d09b87; font-size: .7rem; font-weight: 850; }
+.accountCopy { min-width: 0; }
+.accountCopy strong, .accountCopy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accountCopy strong { font-size: .7rem; }
+.accountCopy small { color: #8b7e90; font-size: .54rem; }
+.signOut { width: 2.35rem; aspect-ratio: 1; display: grid; place-items: center; border: 0; border-radius: 10px; color: #8a7c90; background: transparent; cursor: pointer; transition: color 180ms ease, background 180ms ease; }
+.signOut:hover { color: #934e47; background: #f8e9e6; }
+
+.mobileNav .navLink { display: flex; flex-direction: column; justify-content: center; gap: .15rem; min-height: 55px; padding: .25rem; border-radius: 12px; font-size: .61rem; }
+.mobileNav .navLink::before, .mobileNav .linkArrow { display: none; }
+.mobileNav .iconWrap { width: 2rem; border-radius: 10px; background: transparent; }
+.mobileNav .navLink.active { background: #f1eafa; box-shadow: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .createCard, .navLink, .linkArrow { transition: none; }
+}

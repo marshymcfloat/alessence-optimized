@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExamStatusEnum {
+  GENERATING
+  READY
+  FAILED
+}
+
+enum QuestionTypeEnum {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  IDENTIFICATION
+}
+
+enum AttemptStatusEnum {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+enum AcceptedFileType {
+  PDF
+  DOCX
+  TEXT
+}
+
+enum IngestionStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum GenerationStatus {
+  QUEUED
+  PLANNING
+  RETRIEVING
+  GENERATING
+  VALIDATING
+  REPAIRING
+  READY
+  FAILED
+}
+
+enum GroundingMode {
+  SOURCES
+  MODEL_KNOWLEDGE
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum GenerationFailureCode {
+  CONFIGURATION
+  SOURCES_UNAVAILABLE
+  AI_TRANSIENT
+  AI_INVALID_OUTPUT
+  INSUFFICIENT_VALID_QUESTIONS
+  INTERNAL
+}
+
+model User {
+  id             String        @id @default(uuid())
+  email          String        @unique
+  hashedPassword String
+  name           String
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  subjects       Subject[]
+  files          File[]
+  exams          Exam[]
+  examAttempts   ExamAttempt[]
+}
+
+model Subject {
+  id        Int      @id @default(autoincrement())
+  title     String
+  archived  Boolean  @default(false)
+  userId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?    @relation(fields: [userId], references: [id])
+  files     File[]
+  exams     Exam[]
+
+  @@index([userId])
+  @@unique([userId, title])
+}
+
+model File {
+  id              Int             @id @default(autoincrement())
+  name            String
+  fileUrl         String
+  size            Int
+  type            AcceptedFileType
+  contentText     String?
+  ingestionStatus IngestionStatus @default(PROCESSING)
+  ingestionError  String?
+  subjectId       Int?
+  userId          String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  subject         Subject?        @relation(fields: [subjectId], references: [id])
+  user            User?           @relation(fields: [userId], references: [id])
+  chunks          DocumentChunk[]
+  exams           Exam[]          @relation("ExamToFile")
+
+  @@unique([userId, name])
+  @@index([subjectId])
+  @@index([userId, ingestionStatus])
+}
+
+model DocumentChunk {
+  id            Int      @id @default(autoincrement())
+  fileId        Int
+  ordinal       Int
+  text          String
+  locator       String?
+  tokenEstimate Int
+  embedding     Unsupported("vector")?
+  createdAt     DateTime @default(now())
+  file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, ordinal])
+  @@index([fileId])
+}
+
+model Exam {
+  id             Int                @id @default(autoincrement())
+  description    String
+  requestedItems Int
+  status         ExamStatusEnum     @default(GENERATING)
+  subjectId      Int
+  questionTypes  QuestionTypeEnum[]
+  isPracticeMode Boolean            @default(false)
+  emphasizeWeakTopics Boolean       @default(false)
+  isMock         Boolean            @default(false)
+  timeLimit      Int?
+  userId         String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  subject        Subject            @relation(fields: [subjectId], references: [id])
+  user           User?              @relation(fields: [userId], references: [id])
+  sourceFiles    File[]             @relation("ExamToFile")
+  generations    ExamGeneration[]
+  questions      Question[]
+  attempts       ExamAttempt[]
+
+  @@index([subjectId])
+  @@index([userId, createdAt])
+}
+
+model ExamGeneration {
+  id             String                 @id @default(uuid())
+  examId         Int
+  version        Int
+  status         GenerationStatus       @default(QUEUED)
+  progress       Int                    @default(0)
+  model          String
+  promptVersion  String
+  groundingMode  GroundingMode
+  blueprint      Json?
+  metrics        Json?
+  failureCode    GenerationFailureCode?
+  failureMessage String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  exam           Exam                   @relation(fields: [examId], references: [id], onDelete: Cascade)
+  questions      Question[]
+
+  @@unique([examId, version])
+  @@index([status, createdAt])
+}
+
+model Question {
+  id             Int                @id @default(autoincrement())
+  text           String
+  type           QuestionTypeEnum   @default(MULTIPLE_CHOICE)
+  options        Json
+  correctAnswer  String
+  acceptedAnswers String[]          @default([])
+  explanation    String?
+  difficulty     QuestionDifficulty @default(MEDIUM)
+  topicLabel     String?
+  objective      String?
+  sourceCitations Json
+  slot           Int
+  published      Boolean            @default(false)
+  examId         Int
+  generationId   String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  exam           Exam               @relation(fields: [examId], references: [id], onDelete: Cascade)
+  generation     ExamGeneration?    @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  userAnswers    UserAnswer[]
+
+  @@unique([generationId, slot])
+  @@index([examId, published])
+}
+
+model ExamAttempt {
+  id          Int               @id @default(autoincrement())
+  score       Float?
+  status      AttemptStatusEnum @default(IN_PROGRESS)
+  startedAt   DateTime          @default(now())
+  completedAt DateTime?
+  examId      Int
+  userId      String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  exam        Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id])
+  answers     UserAnswer[]
+
+  @@index([examId])
+  @@index([userId, status])
+}
+
+model UserAnswer {
+  id             Int         @id @default(autoincrement())
+  selectedAnswer String
+  isCorrect      Boolean
+  feedback       String?
+  examAttemptId  Int
+  questionId     Int
+  attempt        ExamAttempt @relation(fields: [examAttemptId], references: [id], onDelete: Cascade)
+  question       Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([examAttemptId, questionId])
+  @@index([questionId])
+}

@@ -1,0 +1,2 @@
+ALTER TABLE "Exam"
+ADD COLUMN "emphasizeWeakTopics" BOOLEAN NOT NULL DEFAULT false;

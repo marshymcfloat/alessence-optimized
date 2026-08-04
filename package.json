@@ -1,0 +1,50 @@
+{
+  "name": "alessence-optimized",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:inngest": "npx --yes --ignore-scripts=false inngest-cli@latest dev -u http://localhost:3000/api/inngest",
+    "build": "node --env-file-if-exists=.env.local node_modules/prisma/build/index.js generate && next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "node --env-file-if-exists=.env.local node_modules/prisma/build/index.js generate && tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "node --env-file-if-exists=.env.local node_modules/prisma/build/index.js generate",
+    "db:migrate": "node --env-file-if-exists=.env.local node_modules/prisma/build/index.js migrate dev",
+    "db:deploy": "node --env-file-if-exists=.env.local node_modules/prisma/build/index.js migrate deploy"
+  },
+  "dependencies": {
+    "@google/genai": "^1.29.0",
+    "@gsap/react": "^2.1.2",
+    "@phosphor-icons/react": "^2.1.10",
+    "@prisma/client": "^6.18.0",
+    "@vercel/blob": "^2.0.0",
+    "bcryptjs": "^3.0.2",
+    "gsap": "^3.15.0",
+    "inngest": "^3.48.1",
+    "jose": "^6.1.0",
+    "mammoth": "^1.11.0",
+    "next": "16.0.10",
+    "pdf-parse": "^2.4.5",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "eslint": "^9.38.0",
+    "eslint-config-next": "16.0.10",
+    "prisma": "^6.18.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
