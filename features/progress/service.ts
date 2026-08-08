@@ -1,20 +1,24 @@
 import "server-only";
 import { db } from "@/lib/db";
+import { academicYearForPeriod, type StudyPeriod } from "@/lib/study-period";
 
-export async function getProgressSummary(userId: string) {
+export async function getProgressSummary(userId: string, period: StudyPeriod = "current") {
+  const academicYear = academicYearForPeriod(period);
+  const examPeriod = academicYear ? { academicYear } : {};
+  const attemptPeriod = academicYear ? { exam: { academicYear } } : {};
   const [examCount, readyExams, materialCount, attempts, wrongTopics] =
     await Promise.all([
-      db.exam.count({ where: { userId } }),
-      db.exam.count({ where: { userId, status: "READY" } }),
+      db.exam.count({ where: { userId, ...examPeriod } }),
+      db.exam.count({ where: { userId, status: "READY", ...examPeriod } }),
       db.file.count({ where: { userId } }),
       db.examAttempt.findMany({
-        where: { userId, status: "COMPLETED", score: { not: null } },
+        where: { userId, status: "COMPLETED", score: { not: null }, ...attemptPeriod },
         orderBy: { completedAt: "desc" },
         include: { exam: { include: { subject: { select: { title: true } } } } },
       }),
       db.userAnswer.groupBy({
         by: ["questionId"],
-        where: { isCorrect: false, attempt: { userId }, question: { topicLabel: { not: null } } },
+        where: { isCorrect: false, attempt: { userId, status: "COMPLETED", ...attemptPeriod }, question: { topicLabel: { not: null } } },
         _count: { questionId: true },
         orderBy: { _count: { questionId: "desc" } },
         take: 12,
@@ -43,7 +47,7 @@ export async function getProgressSummary(userId: string) {
     recentAttempts: attempts.slice(0, 6).map((attempt) => ({
       id: attempt.id,
       examId: attempt.examId,
-      examTitle: attempt.exam.description,
+      examTitle: attempt.exam.title,
       subjectTitle: attempt.exam.subject.title,
       score: attempt.score ?? 0,
       completedAt: attempt.completedAt!.toISOString(),

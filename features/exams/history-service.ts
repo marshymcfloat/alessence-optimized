@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ApiError } from "@/lib/http";
 import { evaluateFreeText } from "@/lib/ai";
 import { normalizeAnswer } from "./validation";
+import { academicYearForPeriod, type StudyPeriod } from "@/lib/study-period";
 
 async function ownExam(examId: number, userId: string) {
   const exam = await db.exam.findFirst({
@@ -30,9 +31,42 @@ export async function examHistory(examId: number, userId: string) {
     totalQuestions: attempt.answers.length,
     correctAnswers: attempt.answers.filter((answer) => answer.isCorrect).length,
     examId,
-    examDescription: attempt.exam.description,
+    examDescription: attempt.exam.title,
     subject: attempt.exam.subject,
   }));
+}
+
+export async function examAttemptsForDetail(examId: number, userId: string, period: StudyPeriod = "current") {
+  await ownExam(examId, userId);
+  const academicYear = academicYearForPeriod(period);
+  const attempts = await db.examAttempt.findMany({
+    where: { examId, userId, status: { not: "ABANDONED" }, ...(academicYear ? { exam: { academicYear } } : {}) },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      status: true,
+      score: true,
+      startedAt: true,
+      submittedAt: true,
+      completedAt: true,
+      _count: { select: { answers: true } },
+      answers: { select: { isCorrect: true } },
+    },
+  });
+  return attempts.map((attempt, index) => ({
+    id: attempt.id,
+    attemptNumber: index + 1,
+    status: attempt.status,
+    score: attempt.score,
+    startedAt: attempt.startedAt,
+    submittedAt: attempt.submittedAt,
+    completedAt: attempt.completedAt,
+    totalQuestions: attempt._count.answers,
+    correctAnswers: attempt.answers.filter((answer) => answer.isCorrect).length,
+    durationSeconds: attempt.completedAt
+      ? Math.max(0, Math.floor((attempt.completedAt.getTime() - attempt.startedAt.getTime()) / 1000))
+      : null,
+  })).reverse();
 }
 
 export async function comparison(examId: number, userId: string) {
@@ -88,7 +122,7 @@ export async function attemptDetails(attemptId: number, userId: string) {
   const attempt = await db.examAttempt.findFirst({
     where: { id: attemptId, userId },
     include: {
-      exam: { include: { subject: { select: { id: true, title: true } } } },
+      exam: { include: { subject: { select: { id: true, title: true } }, generations: { orderBy: { version: "desc" }, take: 1, select: { groundingMode: true } } } },
       answers: {
         orderBy: { question: { slot: "asc" } },
         include: {
@@ -103,6 +137,8 @@ export async function attemptDetails(attemptId: number, userId: string) {
               explanation: true,
               topicLabel: true,
               sourceCitations: true,
+              isComputational: true,
+              calculationMetadata: true,
             },
           },
         },
@@ -120,8 +156,10 @@ export async function attemptDetails(attemptId: number, userId: string) {
     completedAt: attempt.completedAt,
     exam: {
       id: attempt.exam.id,
+      title: attempt.exam.title,
       description: attempt.exam.description,
       subject: attempt.exam.subject,
+      groundingMode: attempt.exam.generations[0]?.groundingMode ?? "MODEL_KNOWLEDGE",
     },
     questions: attempt.answers.map((answer) => ({
       ...answer.question,
@@ -129,6 +167,44 @@ export async function attemptDetails(attemptId: number, userId: string) {
       isCorrect: answer.isCorrect,
       feedback: answer.feedback,
     })),
+  };
+}
+
+export async function attemptReviewState(attemptId: number, userId: string) {
+  const attempt = await db.examAttempt.findFirst({
+    where: { id: attemptId, userId },
+    select: {
+      id: true,
+      status: true,
+      submittedAt: true,
+      exam: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          subject: { select: { title: true } },
+        },
+      },
+    },
+  });
+  if (!attempt) throw new ApiError(404, "Attempt not found.", "ATTEMPT_NOT_FOUND");
+  let status = attempt.status;
+  const reviewTimedOut = status === "SUBMITTING"
+    && attempt.submittedAt
+    && Date.now() - attempt.submittedAt.getTime() > 15 * 60 * 1000;
+  if (reviewTimedOut) {
+    const recovered = await db.examAttempt.updateMany({
+      where: { id: attempt.id, status: "SUBMITTING" },
+      data: { status: "SUBMISSION_FAILED" },
+    });
+    if (recovered.count) status = "SUBMISSION_FAILED";
+  }
+  return {
+    id: attempt.id,
+    status,
+    examId: attempt.exam.id,
+    examDescription: attempt.exam.title,
+    subjectTitle: attempt.exam.subject.title,
   };
 }
 

@@ -11,6 +11,7 @@ const blueprint: Blueprint = {
       topic: "Tax",
       objective: "Apply VAT",
       sourceFileId: null,
+      style: "STANDARD",
     },
   ],
 };
@@ -27,6 +28,8 @@ const valid: GeneratedQuestion = {
   topicLabel: "Tax",
   objective: "Apply VAT",
   citations: [{ chunkId: 7, quote: "Sale B is subject to VAT." }],
+  isComputational: false,
+  calculationMetadata: null,
 };
 
 describe("question validation", () => {
@@ -55,7 +58,7 @@ describe("question validation", () => {
 
   it("rejects a fabricated quote even when the chunk ID is valid", () => {
     const result = validateQuestionDetailed(valid, blueprint, [{
-      id: 7, fileId: 4, locator: null, text: "The reviewer discusses percentage tax only.",
+      id: 7, fileId: 4, ordinal: 0, fileName: "Tax.pdf", locator: null, pageStart: null, pageEnd: null, sectionTitle: null, computationScore: 0, text: "The reviewer discusses percentage tax only.",
     }], true);
     expect(result.valid).toBe(false);
   });
@@ -64,7 +67,7 @@ describe("question validation", () => {
     const result = validateQuestionDetailed(
       { ...valid, topicLabel: "Invented label", objective: "Invented objective" },
       blueprint,
-      [{ id: 7, fileId: 4, locator: null, text: "Under the rule, Sale B is subject to VAT." }],
+      [{ id: 7, fileId: 4, ordinal: 0, fileName: "Tax.pdf", locator: null, pageStart: null, pageEnd: null, sectionTitle: null, computationScore: 0, text: "Under the rule, Sale B is subject to VAT." }],
       true,
     );
     expect(result.valid).toBe(true);
@@ -77,17 +80,36 @@ describe("question validation", () => {
   it("requires a citation from the slot's assigned file", () => {
     const assigned = { slots: [{ ...blueprint.slots[0], sourceFileId: 9 }] };
     expect(validateQuestionDetailed(valid, assigned, [{
-      id: 7, fileId: 4, locator: null, text: "Sale B is subject to VAT.",
+      id: 7, fileId: 4, ordinal: 0, fileName: "Tax.pdf", locator: null, pageStart: null, pageEnd: null, sectionTitle: null, computationScore: 0, text: "Sale B is subject to VAT.",
     }], true).valid).toBe(false);
   });
 
   it("rejects unsupported and missing semantic support verdicts", () => {
     const second = { ...valid, slot: 2, text: "What other transaction is subject to VAT?" };
-    const result = applySupportVerdicts([valid, second], [{ slot: 1, supported: false, reason: "Answer is not entailed." }]);
+    const result = applySupportVerdicts([valid, second], [{ slot: 1, supported: false, answerEntailed: false, explanationAccurate: true, unambiguous: true, distractorsValid: true, calculationValid: true, reason: "Answer is not entailed." }]);
     expect(result.accepted).toHaveLength(0);
     expect(result.rejected).toEqual([
       { slot: 1, reason: "Answer is not entailed." },
       { slot: 2, reason: "Slot 2 received no support verdict." },
     ]);
+  });
+
+  it("accepts a deterministic computational numeric question", () => {
+    const computationalBlueprint: Blueprint = { slots: [{ ...blueprint.slots[0], type: "NUMERIC", style: "COMPUTATIONAL" }] };
+    const question: GeneratedQuestion = {
+      ...valid, type: "NUMERIC", options: [], correctAnswer: "120", isComputational: true,
+      calculationMetadata: { expression: "1000 * 0.12", expectedValue: 120, toleranceType: "ABSOLUTE", tolerance: .01, unit: null, roundingInstruction: "Round to two decimals.", steps: ["Multiply 1,000 by 12%."] },
+    };
+    const result = validateQuestionDetailed(question, computationalBlueprint, [{ id: 7, fileId: 4, ordinal: 0, fileName: "Tax.pdf", locator: "Page 1", pageStart: 1, pageEnd: 1, sectionTitle: null, computationScore: 8, text: "Calculate the tax on 1,000 at a rate of 12 percent. Sale B is subject to VAT." }], true);
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects number recall and expression/result disagreement as computation", () => {
+    const computationalBlueprint: Blueprint = { slots: [{ ...blueprint.slots[0], type: "NUMERIC", style: "COMPUTATIONAL" }] };
+    const question: GeneratedQuestion = {
+      ...valid, type: "NUMERIC", options: [], correctAnswer: "12", isComputational: true,
+      calculationMetadata: { expression: "10 + 1", expectedValue: 12, toleranceType: "ABSOLUTE", tolerance: .01, unit: "%", roundingInstruction: "Enter the rate.", steps: ["Recall the rate."] },
+    };
+    expect(validateQuestionDetailed(question, computationalBlueprint, [], false).valid).toBe(false);
   });
 });

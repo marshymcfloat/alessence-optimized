@@ -14,3 +14,18 @@
 .topbar{position:sticky;z-index:10;top:.65rem;grid-template-columns:auto minmax(0,1fr) auto;max-width:74rem;min-height:4.25rem;margin:.65rem auto 0;padding:.65rem .75rem;border:1px solid rgba(74,53,111,.07);border-radius:17px;background:rgba(255,255,255,.94);box-shadow:0 12px 32px rgba(51,41,63,.08);backdrop-filter:blur(12px)}.leaveButton{min-height:2.8rem;padding:.55rem .7rem;border-radius:10px;color:#604c6d;background:#f3eef6}.leaveButton:hover{color:#443153;background:#ece3f1}.examIdentity{padding-left:1rem;border-left:1px solid #e7dfe8;text-align:left}.examIdentity span{color:#927c9f}.examIdentity strong{max-width:54ch}.untimed{min-height:2.7rem;display:inline-flex;align-items:center;gap:.42rem;padding:.5rem .65rem;border-radius:10px;color:#6e6273;background:#f5f2f5}.progressHeader{grid-template-columns:auto minmax(12rem,25rem);max-width:74rem;margin:.55rem auto 1rem;padding:.7rem .85rem;border-radius:13px;background:#eee7f4}.progressHeader>div:first-child{gap:.4rem}.progressHeader>div:first-child span{padding:.28rem .42rem;border-radius:7px;background:rgba(255,255,255,.62)}.progressTrack{background:#dcd2e3}.progressTrack span{background:#6d4a9e}
 @media(max-width:760px){.topbar{top:.35rem;margin:.35rem .65rem 0}.progressHeader{margin:.45rem .65rem .8rem}.examIdentity strong{max-width:40vw}}
 @media(max-width:560px){.topbar{min-height:3.9rem;padding:.5rem}.leaveButton{width:2.75rem;padding:0}.examIdentity{padding-left:.7rem}.examIdentity strong{max-width:42vw;font-size:.62rem}.timer,.untimed{min-height:2.55rem}.untimed{font-size:0}.progressHeader{grid-template-columns:1fr;padding:.58rem .7rem}.progressHeader>div:first-child span{padding:0;background:transparent}}
+.textAnswer input{width:100%;min-height:4rem;padding:1rem;border:1px solid #ddd4dd;border-radius:15px;outline:0;color:#302933;background:#fcfbfc;font:inherit;font-size:1rem}.textAnswer input:focus{border-color:#74579b;box-shadow:0 0 0 3px rgba(91,65,130,.1);background:#fff}.textAnswer small{color:#75697a;font-size:.6rem}
+
+@media(max-width:560px){
+  .runner{width:100%;min-width:0;overflow-x:clip}
+  .topbar,.progressHeader{width:auto;max-width:40rem;margin-inline:auto}
+  .topbar{margin-inline:.65rem}
+  .progressHeader{margin-inline:.65rem}
+  .workspace{width:100%;max-width:40rem;min-width:0;margin-inline:auto;padding-inline:.75rem}
+  .questionArea,.navigator,.questionMeta,.questionCard,.options,.questionActions{width:100%;min-width:0;max-width:100%}
+  .questionMap{width:100%;min-width:0;max-width:100%;scroll-padding-inline:.2rem;overscroll-behavior-inline:contain}
+  .questionCard h1,.option strong,.selectedOption strong{min-width:0;overflow-wrap:anywhere}
+  .option,.selectedOption{width:100%;max-width:100%}
+  .questionActions button{min-width:0}
+  .questionActions .nextButton,.questionActions .submitButton{white-space:nowrap}
+}

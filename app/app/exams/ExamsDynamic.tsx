@@ -9,9 +9,10 @@ import { GenerationRefresh } from "./GenerationRefresh";
 import { ExamsReveal } from "./ExamsPageMotion";
 import { examsPageData } from "./exams-data";
 import styles from "./exams.module.css";
+import type { StudyPeriod } from "@/lib/study-period";
 
-export async function ExamHeaderStats() {
-  const exams = await examsPageData();
+export async function ExamHeaderStats({ period }: { period: StudyPeriod }) {
+  const exams = await examsPageData(period);
   const ready = exams.filter((exam) => exam.status === "READY");
   const attempted = ready.filter((exam) => exam._count.attempts > 0).length;
 
@@ -24,8 +25,8 @@ export async function ExamHeaderStats() {
   );
 }
 
-export async function ExamLibraryBody() {
-  const exams = await examsPageData();
+export async function ExamLibraryBody({ createdExamId, period }: { createdExamId?: number; period: StudyPeriod }) {
+  const exams = await examsPageData(period);
   const ready = exams.filter((exam) => exam.status === "READY");
   const generating = exams.filter((exam) => exam.status === "GENERATING");
   const failed = exams.filter((exam) => exam.status === "FAILED");
@@ -49,10 +50,10 @@ export async function ExamLibraryBody() {
               const generation = exam.generations[0];
               const progress = generation?.progress ?? 0;
               return (
-                <article className={styles.generationCard} aria-busy="true" key={exam.id}>
+                <article id={`exam-${exam.id}`} className={`${styles.generationCard} ${exam.id === createdExamId ? styles.newGenerationCard : ""}`} aria-busy="true" aria-live={exam.id === createdExamId ? "polite" : undefined} key={exam.id}>
                   <span className={styles.generatingIcon}><Lightning size={22} weight="duotone" /></span>
                   <div className={styles.generationCopy}>
-                    <span>{exam.subject.title}</span><h3>{exam.description}</h3>
+                    <span>{exam.subject.title}</span><h3>{exam.title}</h3>
                     <div className={styles.progressLine}><progress value={progress} max="100" aria-label={`${progress}% generated`} /><b>{progress}%</b></div>
                     <small>{generation ? generation.status.toLowerCase().replaceAll("_", " ") : "queued"} · {exam.requestedItems} questions</small>
                   </div>
@@ -82,13 +83,13 @@ export async function ExamLibraryBody() {
                       {exam.isMock && <span>Mock exam</span>}
                       <span>{exam._count.attempts ? `${exam._count.attempts} ${exam._count.attempts === 1 ? "attempt" : "attempts"}` : "New"}</span>
                     </div>
-                    <ExamDeleteButton examId={exam.id} examTitle={exam.description} />
+                    <ExamDeleteButton examId={exam.id} examTitle={exam.title} />
                   </div>
                 </div>
 
                 <div className={styles.examCopy}>
                   <p>{exam.subject.title}</p>
-                  <h3>{exam.description}</h3>
+                  <h3>{exam.title}</h3>
                 </div>
 
                 <div className={styles.metaGrid}>
@@ -127,8 +128,8 @@ export async function ExamLibraryBody() {
             {failed.map((exam) => (
               <article key={exam.id}>
                 <span className={styles.failedIcon}><WarningCircle size={19} /></span>
-                <span><strong>{exam.description}</strong><small>{exam.subject.title} · {exam.generations[0]?.failureCode?.toLowerCase().replaceAll("_", " ") ?? "generation failed"}</small></span>
-                <span className={styles.failedActions}><Link className={styles.retryLabel} href={`/app/exams/${exam.id}`}>Review and retry <ArrowRight size={16} /></Link><ExamDeleteButton examId={exam.id} examTitle={exam.description} compact /></span>
+                <span><strong>{exam.title}</strong><small>{exam.subject.title} · {exam.generations[0]?.failureCode?.toLowerCase().replaceAll("_", " ") ?? "generation failed"}</small></span>
+                <span className={styles.failedActions}><Link className={styles.retryLabel} href={`/app/exams/${exam.id}`}>Review and retry <ArrowRight size={16} /></Link><ExamDeleteButton examId={exam.id} examTitle={exam.title} compact /></span>
               </article>
             ))}
           </div>

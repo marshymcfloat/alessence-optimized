@@ -17,10 +17,18 @@ enum QuestionTypeEnum {
   MULTIPLE_CHOICE
   TRUE_FALSE
   IDENTIFICATION
+  NUMERIC
+}
+
+enum CalculationMode {
+  AUTO
+  ONLY
 }
 
 enum AttemptStatusEnum {
   IN_PROGRESS
+  SUBMITTING
+  SUBMISSION_FAILED
   COMPLETED
   ABANDONED
 }
@@ -65,6 +73,7 @@ enum GenerationFailureCode {
   AI_TRANSIENT
   AI_INVALID_OUTPUT
   INSUFFICIENT_VALID_QUESTIONS
+  INSUFFICIENT_COMPUTATION_EVIDENCE
   INTERNAL
 }
 
@@ -105,6 +114,9 @@ model File {
   contentText     String?
   ingestionStatus IngestionStatus @default(PROCESSING)
   ingestionError  String?
+  indexVersion    Int             @default(1)
+  indexedAt       DateTime?
+  academicYear    String           @default("THIRD_YEAR")
   subjectId       Int?
   userId          String?
   createdAt       DateTime        @default(now())
@@ -114,9 +126,10 @@ model File {
   chunks          DocumentChunk[]
   exams           Exam[]          @relation("ExamToFile")
 
-  @@unique([userId, name])
+  @@unique([userId, name, academicYear])
   @@index([subjectId])
   @@index([userId, ingestionStatus])
+  @@index([userId, academicYear])
 }
 
 model DocumentChunk {
@@ -125,17 +138,26 @@ model DocumentChunk {
   ordinal       Int
   text          String
   locator       String?
+  pageStart     Int?
+  pageEnd       Int?
+  sectionTitle  String?
+  indexVersion  Int      @default(2)
   tokenEstimate Int
+  computationScore Int      @default(0)
+  computationScored Boolean @default(false)
   embedding     Unsupported("vector")?
+  searchVector  Unsupported("tsvector")?
   createdAt     DateTime @default(now())
   file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
   @@unique([fileId, ordinal])
   @@index([fileId])
+  @@index([fileId, computationScore])
 }
 
 model Exam {
   id             Int                @id @default(autoincrement())
+  title          String
   description    String
   requestedItems Int
   status         ExamStatusEnum     @default(GENERATING)
@@ -143,7 +165,9 @@ model Exam {
   questionTypes  QuestionTypeEnum[]
   isPracticeMode Boolean            @default(false)
   emphasizeWeakTopics Boolean       @default(false)
+  calculationMode CalculationMode   @default(AUTO)
   isMock         Boolean            @default(false)
+  academicYear   String             @default("THIRD_YEAR")
   timeLimit      Int?
   userId         String?
   createdAt      DateTime           @default(now())
@@ -157,6 +181,7 @@ model Exam {
 
   @@index([subjectId])
   @@index([userId, createdAt])
+  @@index([userId, academicYear])
 }
 
 model ExamGeneration {
@@ -194,6 +219,8 @@ model Question {
   difficulty     QuestionDifficulty @default(MEDIUM)
   topicLabel     String?
   objective      String?
+  isComputational Boolean           @default(false)
+  calculationMetadata Json?
   sourceCitations Json
   slot           Int
   published      Boolean            @default(false)
@@ -214,6 +241,7 @@ model ExamAttempt {
   score       Float?
   status      AttemptStatusEnum @default(IN_PROGRESS)
   startedAt   DateTime          @default(now())
+  submittedAt DateTime?
   completedAt DateTime?
   examId      Int
   userId      String

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const subjectId = Number(form.get("subjectId"));
     const files = form.getAll("files").filter((value): value is File => value instanceof File);
     const materials = await ingestFiles(files, user.id, subjectId);
-    return noStoreJson({ materials }, { status: 201 });
+    return noStoreJson({ materials }, { status: 202 });
   } catch (error) {
     return apiError(error);
   }

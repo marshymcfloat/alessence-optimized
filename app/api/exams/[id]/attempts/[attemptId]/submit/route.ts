@@ -15,6 +15,7 @@ export async function POST(
     const input = submitAttemptSchema.parse(await request.json());
     return noStoreJson(
       await submitAttempt(Number(id), Number(attemptId), user.id, input.answers),
+      { status: 202 },
     );
   } catch (error) {
     return apiError(error);

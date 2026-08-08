@@ -1,0 +1,5 @@
+ALTER TYPE "AttemptStatusEnum" ADD VALUE 'SUBMITTING';
+ALTER TYPE "AttemptStatusEnum" ADD VALUE 'SUBMISSION_FAILED';
+
+ALTER TABLE "ExamAttempt"
+ADD COLUMN "submittedAt" TIMESTAMP(3);

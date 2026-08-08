@@ -3,10 +3,12 @@ import { del } from "@vercel/blob";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { ApiError } from "@/lib/http";
+import { academicYearForPeriod, type StudyPeriod } from "@/lib/study-period";
 
-export async function listMaterials(userId: string, subjectId?: number) {
+export async function listMaterials(userId: string, subjectId?: number, period: StudyPeriod = "current") {
+  const academicYear = academicYearForPeriod(period);
   const materials = await db.file.findMany({
-    where: { userId, ...(subjectId ? { subjectId } : {}) },
+    where: { userId, ...(subjectId ? { subjectId } : {}), ...(academicYear ? { academicYear } : {}) },
     orderBy: { createdAt: "desc" },
     include: {
       subject: { select: { id: true, title: true } },
@@ -19,6 +21,8 @@ export async function listMaterials(userId: string, subjectId?: number) {
     size: material.size,
     type: material.type,
     ingestionStatus: material.ingestionStatus,
+    ingestionError: material.ingestionError,
+    indexedAt: material.indexedAt?.toISOString() ?? null,
     createdAt: material.createdAt.toISOString(),
     subject: material.subject,
     examCount: material._count.exams,

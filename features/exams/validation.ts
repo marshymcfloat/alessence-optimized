@@ -1,5 +1,6 @@
 import type { Blueprint, GeneratedQuestion } from "./generation-schemas";
 import type { RetrievedChunk } from "./retrieval";
+import { numericAnswerIsCorrect, parseNumericAnswer, validateCalculation } from "./computation";
 
 export function normalizeAnswer(value: string) {
   return value.normalize("NFKC").trim().toLocaleLowerCase("en")
@@ -18,14 +19,14 @@ export type ValidationResult = { valid: true; question: GeneratedQuestion } | { 
 
 export function applySupportVerdicts(
   questions: GeneratedQuestion[],
-  results: Array<{ slot: number; supported: boolean; reason: string }>,
+  results: Array<{ slot: number; supported: boolean; answerEntailed: boolean; explanationAccurate: boolean; unambiguous: boolean; distractorsValid: boolean; calculationValid: boolean; reason: string }>,
 ) {
   const verdicts = new Map(results.map((result) => [result.slot, result]));
   const accepted: GeneratedQuestion[] = [];
   const rejected: Array<{ slot: number; reason: string }> = [];
   for (const question of questions) {
     const verdict = verdicts.get(question.slot);
-    if (verdict?.supported) accepted.push(question);
+    if (verdict?.supported && verdict.answerEntailed && verdict.explanationAccurate && verdict.unambiguous && verdict.distractorsValid && verdict.calculationValid) accepted.push(question);
     else rejected.push({
       slot: question.slot,
       reason: verdict?.reason ?? `Slot ${question.slot} received no support verdict.`,
@@ -44,10 +45,21 @@ export function validateQuestionDetailed(
   if (!slot) return { valid: false, reason: `Slot ${question.slot} is not in the blueprint.` };
   if (slot.type !== question.type) return { valid: false, reason: `Slot ${question.slot} has the wrong question type.` };
   if (slot.difficulty !== question.difficulty) return { valid: false, reason: `Slot ${question.slot} has the wrong difficulty.` };
+  if (slot.style === "COMPUTATIONAL") {
+    if (!question.isComputational || !question.calculationMetadata) return { valid: false, reason: `COMPUTATION_METADATA: Slot ${question.slot} lacks validated calculation metadata.` };
+    if (question.type !== "MULTIPLE_CHOICE" && question.type !== "NUMERIC") return { valid: false, reason: `COMPUTATION_FORMAT: Slot ${question.slot} uses an incompatible format.` };
+    if (!validateCalculation(question.calculationMetadata)) return { valid: false, reason: `COMPUTATION_EXPRESSION: Slot ${question.slot} has an invalid expression, result, or tolerance.` };
+    if (!numericAnswerIsCorrect(question.correctAnswer, question.calculationMetadata)) return { valid: false, reason: `COMPUTATION_ANSWER: Slot ${question.slot} correct answer disagrees with the calculation.` };
+  } else if (question.isComputational || question.calculationMetadata) {
+    return { valid: false, reason: `Slot ${question.slot} incorrectly marks a standard question as computational.` };
+  }
   if (question.type === "MULTIPLE_CHOICE") {
     const unique = new Set(question.options.map(normalizeAnswer));
     if (question.options.length !== 4 || unique.size !== 4) return { valid: false, reason: `Slot ${question.slot} must have four distinct options.` };
     if (!unique.has(normalizeAnswer(question.correctAnswer))) return { valid: false, reason: `Slot ${question.slot} answer must match an option.` };
+    if (question.isComputational && question.calculationMetadata && question.options.filter((option) => numericAnswerIsCorrect(option, question.calculationMetadata!)).length !== 1) {
+      return { valid: false, reason: `COMPUTATION_DISTRACTORS: Slot ${question.slot} must have exactly one option within tolerance.` };
+    }
   } else if (question.type === "TRUE_FALSE") {
     const options = new Set(question.options.map(normalizeAnswer));
     if (options.size !== 2 || !options.has("true") || !options.has("false") || !options.has(normalizeAnswer(question.correctAnswer))) {
@@ -55,6 +67,9 @@ export function validateQuestionDetailed(
     }
   } else if (question.options.length !== 0) {
     return { valid: false, reason: `Slot ${question.slot} identification question cannot have options.` };
+  }
+  if (question.type === "NUMERIC" && (!question.calculationMetadata || parseNumericAnswer(question.correctAnswer, question.calculationMetadata.unit) === null)) {
+    return { valid: false, reason: `COMPUTATION_ANSWER: Slot ${question.slot} numeric answer is invalid.` };
   }
   if (grounded) {
     if (!question.citations.length) return { valid: false, reason: `Slot ${question.slot} has no citation.` };
@@ -83,7 +98,7 @@ export function validateQuestion(
   allowedChunkIds: Set<number>,
   grounded: boolean,
 ) {
-  const placeholderChunks = [...allowedChunkIds].map((id) => ({ id, fileId: 0, text: question.citations.find((citation) => citation.chunkId === id)?.quote ?? "", locator: null }));
+  const placeholderChunks = [...allowedChunkIds].map((id) => ({ id, fileId: 0, ordinal: id, fileName: "", text: question.citations.find((citation) => citation.chunkId === id)?.quote ?? "", locator: null, pageStart: null, pageEnd: null, sectionTitle: null, computationScore: 0 }));
   return validateQuestionDetailed(question, blueprint, placeholderChunks, grounded).valid;
 }
 
@@ -95,7 +110,7 @@ export function uniqueValidQuestions(
   grounded: boolean,
 ) {
   const chunks = chunksOrIds instanceof Set
-    ? [...chunksOrIds].map((id) => ({ id, fileId: 0, text: questions.flatMap((question) => question.citations).find((citation) => citation.chunkId === id)?.quote ?? "", locator: null }))
+    ? [...chunksOrIds].map((id) => ({ id, fileId: 0, ordinal: id, fileName: "", text: questions.flatMap((question) => question.citations).find((citation) => citation.chunkId === id)?.quote ?? "", locator: null, pageStart: null, pageEnd: null, sectionTitle: null, computationScore: 0 }))
     : chunksOrIds;
   const seenText = new Set(existing.map((question) => normalizedQuestion(question.text)));
   const seenSlots = new Set(existing.map((question) => question.slot));

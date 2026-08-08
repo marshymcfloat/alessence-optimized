@@ -11,7 +11,10 @@ export async function POST(request: Request) {
     const input = mockExamSchema.parse(await request.json());
     const result = await createExam(
       {
-        description: input.title ?? "Philippine board-style mock examination",
+        title: input.title ?? "",
+        description: "Philippine board-style mock examination",
+        focusMode: "CUSTOM",
+        calculationMode: "AUTO",
         requestedItems: 70,
         subjectId: input.subjectId,
         questionTypes: ["MULTIPLE_CHOICE"],
@@ -25,7 +28,7 @@ export async function POST(request: Request) {
     );
     await (await import("@/lib/db")).db.exam.update({
       where: { id: result.id },
-      data: { isMock: true },
+      data: { isMock: true, ...(!input.title ? { title: "Board Mock Exam" } : {}) },
     });
     return noStoreJson(result, { status: 202 });
   } catch (error) {

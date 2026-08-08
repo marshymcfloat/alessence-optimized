@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
   BookOpenText,
   Brain,
+  Calculator,
   Check,
   CheckCircle,
   FileDoc,
@@ -25,6 +27,7 @@ import {
   ToggleLeft,
 } from "@phosphor-icons/react";
 import type { MaterialSummary, SubjectSummary } from "@/features/frontend/contracts";
+import { resolveExamFocus, type FocusMode } from "@/features/exams/focus";
 import { formatBytes } from "@/lib/format";
 import styles from "./wizard.module.css";
 
@@ -32,10 +35,16 @@ const questionTypes = [
   { value: "MULTIPLE_CHOICE", label: "Multiple choice", note: "Choose one correct option", icon: ListChecks },
   { value: "TRUE_FALSE", label: "True or false", note: "Fast concept checks", icon: ToggleLeft },
   { value: "IDENTIFICATION", label: "Identification", note: "Recall terms and ideas", icon: IdentificationCard },
+  { value: "NUMERIC", label: "Numeric answer", note: "Enter a calculated value", icon: Calculator },
 ] as const;
 
 const itemOptions = [5, 10, 15, 25, 50, 70];
 const timeOptions = [null, 30, 60, 90, 120] as const;
+const focusPresets: Array<{ value: Exclude<FocusMode, "CUSTOM">; label: string; note: string }> = [
+  { value: "BALANCED", label: "Balanced review", note: "Concepts, rules, and applications" },
+  { value: "CONCEPTS", label: "Concepts and definitions", note: "Principles and distinctions" },
+  { value: "APPLICATIONS", label: "Practical applications", note: "Problems and scenarios" },
+];
 const steps = [
   { label: "Sources", note: "Choose what to study", icon: BookOpenText },
   { label: "Settings", note: "Shape the practice", icon: GearSix },
@@ -54,6 +63,9 @@ export function ExamWizard({
   const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? 0);
   const [selected, setSelected] = useState<number[]>([]);
   const [description, setDescription] = useState("");
+  const [title, setTitle] = useState("");
+  const [focusMode, setFocusMode] = useState<FocusMode>("BALANCED");
+  const [calculationMode, setCalculationMode] = useState<"AUTO" | "ONLY">("AUTO");
   const [items, setItems] = useState(10);
   const [types, setTypes] = useState<string[]>(["MULTIPLE_CHOICE"]);
   const [timeLimit, setTimeLimit] = useState<number | "">("");
@@ -70,9 +82,19 @@ export function ExamWizard({
   );
   const currentSubject = subjects.find((subject) => subject.id === subjectId);
   const selectedMaterials = materials.filter((material) => selected.includes(material.id));
+  const effectiveFocus = resolveExamFocus({ description, focusMode, subjectTitle: currentSubject?.title ?? "this subject", hasSources: selected.length > 0 });
+  const defaultTitle = `${currentSubject?.title ?? "Subject"}${focusMode === "CONCEPTS" ? " Concepts" : focusMode === "APPLICATIONS" ? " Applications" : " Review"}`;
+  const typeDistribution = distributeQuestionTypes(items, types);
   const canContinue = step === 1
     ? Boolean(subjectId && (selected.length || knowledge))
-    : Boolean(description.trim() && types.length);
+    : Boolean(types.length && (calculationMode !== "ONLY" || selected.length));
+  const estimatedComputations = calculationMode === "ONLY"
+    ? items
+    : types.some((type) => type === "MULTIPLE_CHOICE" || type === "NUMERIC") ? Math.max(1, Math.round(items * .3)) : 0;
+
+  useEffect(() => {
+    if (step === 3) router.prefetch("/app/exams");
+  }, [router, step]);
 
   function chooseSubject(id: number) {
     setSubjectId(id);
@@ -81,11 +103,46 @@ export function ExamWizard({
   }
 
   function toggleSource(id: number) {
-    setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+    setSelected((current) => {
+      if (current.includes(id)) return current.filter((value) => value !== id);
+      if (current.length >= 25) return current;
+      setKnowledge(false);
+      return [...current, id];
+    });
+  }
+
+  function chooseKnowledge() {
+    setKnowledge((current) => {
+      const next = !current;
+      if (next) setSelected([]);
+      return next;
+    });
+  }
+
+  function chooseFocusPreset(mode: Exclude<FocusMode, "CUSTOM">) {
+    setFocusMode(mode);
+    setDescription("");
+  }
+
+  function updateDescription(value: string) {
+    setDescription(value);
+    setFocusMode(value.trim() ? "CUSTOM" : "BALANCED");
   }
 
   function toggleType(type: string) {
+    if (calculationMode === "ONLY" && type !== "MULTIPLE_CHOICE" && type !== "NUMERIC") return;
     setTypes((current) => current.includes(type) ? current.filter((value) => value !== type) : [...current, type]);
+  }
+
+  function chooseCalculationMode(mode: "AUTO" | "ONLY") {
+    setCalculationMode(mode);
+    if (mode === "ONLY") {
+      setKnowledge(false);
+      setTypes((current) => {
+        const compatible = current.filter((type) => type === "MULTIPLE_CHOICE" || type === "NUMERIC");
+        return compatible.length ? compatible : ["MULTIPLE_CHOICE", "NUMERIC"];
+      });
+    }
   }
 
   async function create() {
@@ -93,6 +150,9 @@ export function ExamWizard({
     setError("");
     const body = new FormData();
     body.set("description", description);
+    body.set("title", title);
+    body.set("focusMode", focusMode);
+    body.set("calculationMode", calculationMode);
     body.set("requestedItems", String(items));
     body.set("subjectId", String(subjectId));
     body.set("isPracticeMode", String(practice));
@@ -105,8 +165,7 @@ export function ExamWizard({
       const response = await fetch("/api/exams", { method: "POST", body });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error?.message ?? "Could not create exam.");
-      router.push("/app/exams");
-      router.refresh();
+      router.replace(`/app/exams?created=${data.id}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create exam.");
       setPending(false);
@@ -121,7 +180,10 @@ export function ExamWizard({
           <h1>Create an exam</h1>
           <p>Start with trustworthy sources, then shape the practice around what matters now.</p>
         </div>
-        <span className={styles.privateBadge}><ShieldCheck size={17} weight="duotone" /> Private and source-grounded</span>
+        <div className={styles.headerAside}>
+          <Image src="/mascots/exam-planner-mascot-v2.png" alt="" width={1536} height={1024} priority sizes="208px" aria-hidden="true" />
+          <span className={styles.privateBadge}><ShieldCheck size={17} weight="duotone" /> Private and source-grounded</span>
+        </div>
       </header>
 
       <div className={styles.wizardLayout}>
@@ -179,7 +241,7 @@ export function ExamWizard({
                     const Icon = material.type === "PDF" ? FilePdf : material.type === "DOCX" ? FileDoc : FileText;
                     const active = selected.includes(material.id);
                     return (
-                      <button type="button" className={`${styles.sourceCard} ${active ? styles.selectedSource : ""}`} onClick={() => toggleSource(material.id)} aria-pressed={active} key={material.id}>
+                      <button type="button" className={`${styles.sourceCard} ${active ? styles.selectedSource : ""}`} onClick={() => toggleSource(material.id)} aria-pressed={active} disabled={!active && selected.length >= 25} key={material.id}>
                         <span className={`${styles.fileIcon} ${styles[`tone${index % 4}`]}`}><Icon size={23} weight="duotone" /></span>
                         <span><strong>{material.name}</strong><small>{material.type} · {formatBytes(material.size)}</small></span>
                         <span className={styles.checkBox}>{active && <Check size={15} weight="bold" />}</span>
@@ -190,9 +252,11 @@ export function ExamWizard({
                 </div>
               </section>
 
-              <button type="button" role="switch" aria-checked={knowledge} className={`${styles.knowledgeToggle} ${knowledge ? styles.toggleOn : ""}`} onClick={() => setKnowledge((current) => !current)}>
+              {selected.length >= 25 && <p className={styles.sourceNotice}><Info size={16} /> Source limit reached. Remove one reviewer before selecting another.</p>}
+
+              <button type="button" role="switch" aria-checked={knowledge} className={`${styles.knowledgeToggle} ${knowledge ? styles.toggleOn : ""}`} onClick={chooseKnowledge}>
                 <span className={styles.toggleTrack}><span /></span>
-                <span><strong>Allow model knowledge</strong><small>Use only when source material is unavailable. The finished exam will be labeled clearly.</small></span>
+                <span><strong>Use model knowledge instead</strong><small>Available only without selected reviewers. Enabling this clears the current source selection.</small></span>
                 <Info size={19} />
               </button>
             </div>
@@ -201,12 +265,29 @@ export function ExamWizard({
           {step === 2 && (
             <div className={styles.stepContent}>
               <section className={styles.formSection}>
-                <div className={styles.fieldHeading}><span><NotePencil size={21} weight="duotone" /></span><div><h3>Describe the focus</h3><p>Be specific about topics, coverage, or learning objectives.</p></div><b>{description.length}/2000</b></div>
+                <div className={styles.fieldHeading}><span><NotePencil size={21} weight="duotone" /></span><div><h3>Choose the focus</h3><p>Use a preset, write your own, or leave it blank for balanced coverage.</p></div><b>{description.length}/2000</b></div>
                 <label className={styles.focusField}>
-                  <span>Exam focus</span>
-                  <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="For example: Obligations and contracts, focusing on sources and effects of obligations" maxLength={2000} autoFocus />
-                  <small>Write one or two clear sentences. You can include priority topics.</small>
+                  <span>Exam name <em>Optional</em></span>
+                  <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={defaultTitle} maxLength={120} />
+                  <small>This short name appears in your exam library and attempt pages.</small>
                 </label>
+                <div className={styles.focusPresets} role="radiogroup" aria-label="Exam focus preset">
+                  {focusPresets.map((preset) => <button type="button" role="radio" aria-checked={focusMode === preset.value && !description.trim()} className={focusMode === preset.value && !description.trim() ? styles.selectedPreset : ""} onClick={() => chooseFocusPreset(preset.value)} key={preset.value}><strong>{preset.label}</strong><small>{preset.note}</small></button>)}
+                </div>
+                <label className={styles.focusField}>
+                  <span>Exam focus <em>Optional</em></span>
+                  <textarea value={description} onChange={(event) => updateDescription(event.target.value)} placeholder="For example: Obligations and contracts, focusing on sources and effects of obligations" maxLength={2000} />
+                  <small>Leave blank for balanced coverage across the selected reviewers.</small>
+                </label>
+              </section>
+
+              <section className={styles.formSection}>
+                <div className={styles.fieldHeading}><span><Calculator size={21} weight="duotone" /></span><div><h3>Calculation preference</h3><p>Control whether numerical problem solving is required.</p></div></div>
+                <div className={styles.focusPresets} role="radiogroup" aria-label="Calculation preference">
+                  <button type="button" role="radio" aria-checked={calculationMode === "AUTO"} className={calculationMode === "AUTO" ? styles.selectedPreset : ""} onClick={() => chooseCalculationMode("AUTO")}><strong>Automatic</strong><small>Use calculations when reviewers and formats support them.</small></button>
+                  <button type="button" role="radio" aria-checked={calculationMode === "ONLY"} className={calculationMode === "ONLY" ? styles.selectedPreset : ""} onClick={() => chooseCalculationMode("ONLY")}><strong>Computation only</strong><small>Every question requires a supported calculation.</small></button>
+                </div>
+                {calculationMode === "ONLY" && <p className={styles.coverageWarning}><Info size={16} /> Requires ready reviewers with enough formulas or worked examples. Only multiple-choice and numeric-answer formats are available.</p>}
               </section>
 
               <section className={styles.formSection}>
@@ -214,6 +295,7 @@ export function ExamWizard({
                 <div className={styles.countOptions} role="radiogroup" aria-label="Number of questions">
                   {itemOptions.map((value) => <button type="button" role="radio" aria-checked={items === value} className={items === value ? styles.selectedCount : ""} onClick={() => setItems(value)} key={value}><strong>{value}</strong><span>questions</span></button>)}
                 </div>
+                {selected.length > items && <p className={styles.coverageWarning}><Info size={16} /> You selected {selected.length} reviewers for {items} questions. Alessence will prioritize the {items} most relevant reviewers.</p>}
               </section>
 
               <section className={styles.formSection}>
@@ -222,7 +304,8 @@ export function ExamWizard({
                   {questionTypes.map((type) => {
                     const Icon = type.icon;
                     const active = types.includes(type.value);
-                    return <button type="button" className={active ? styles.selectedType : ""} aria-pressed={active} onClick={() => toggleType(type.value)} key={type.value}><span><Icon size={23} weight="duotone" /></span><strong>{type.label}</strong><small>{type.note}</small><b>{active && <Check size={15} weight="bold" />}</b></button>;
+                    const disabled = calculationMode === "ONLY" && type.value !== "MULTIPLE_CHOICE" && type.value !== "NUMERIC";
+                    return <button type="button" disabled={disabled} className={active ? styles.selectedType : ""} aria-pressed={active} onClick={() => toggleType(type.value)} key={type.value}><span><Icon size={23} weight="duotone" /></span><strong>{type.label}</strong><small>{disabled ? "Unavailable for computation-only exams" : type.note}</small><b>{active && <Check size={15} weight="bold" />}</b></button>;
                   })}
                 </div>
               </section>
@@ -243,7 +326,9 @@ export function ExamWizard({
               <section className={styles.examBrief}>
                 <span className={styles.briefBadge}><Sparkle size={15} weight="fill" /> Ready to generate</span>
                 <p>{currentSubject?.title ?? "Subject"}</p>
-                <h2>{description}</h2>
+                <h2>{title.trim() || defaultTitle}</h2>
+                <p className={styles.briefFocus}>{effectiveFocus.value}</p>
+                {effectiveFocus.automatic && <span className={styles.automaticFocus}>Automatically prepared focus</span>}
                 <div className={styles.briefStats}>
                   <div><strong>{items}</strong><span>Questions</span></div>
                   <div><strong>{selected.length}</strong><span>Sources</span></div>
@@ -254,8 +339,15 @@ export function ExamWizard({
 
               <div className={styles.reviewGrid}>
                 <section><div className={styles.reviewHeading}><BookOpenText size={20} weight="duotone" /><div><h3>Grounding</h3><p>{selected.length ? "Selected source material" : "Model knowledge"}</p></div></div>{selectedMaterials.length ? <div className={styles.reviewSources}>{selectedMaterials.map((material) => <span key={material.id}><FileText size={15} />{material.name}</span>)}</div> : <p className={styles.knowledgeNotice}>This exam will use model knowledge and will be labeled accordingly.</p>}</section>
-                <section><div className={styles.reviewHeading}><ListChecks size={20} weight="duotone" /><div><h3>Question formats</h3><p>{practice ? "Repeat attempts enabled" : "Single-attempt mode"}{emphasizeWeakTopics ? " · Weak-topic focus enabled" : ""}</p></div></div><div className={styles.reviewTypes}>{types.map((type) => <span key={type}>{questionTypes.find((item) => item.value === type)?.label}</span>)}</div></section>
+                <section><div className={styles.reviewHeading}><ListChecks size={20} weight="duotone" /><div><h3>Question formats</h3><p>{practice ? "Repeat attempts enabled" : "Single-attempt mode"}{emphasizeWeakTopics ? " · Up to 40% weak-topic focus" : ""}</p></div></div><div className={styles.reviewTypes}>{types.map((type) => <span key={type}>{typeDistribution[type] ?? 0} {questionTypes.find((item) => item.value === type)?.label}</span>)}</div></section>
               </div>
+              <section className={styles.generationPreview} aria-label="Generation plan">
+                <div><span>Focus</span><strong>{effectiveFocus.automatic ? focusPresets.find((preset) => preset.value === effectiveFocus.mode)?.label ?? "Balanced review" : "Custom focus"}</strong></div>
+                <div><span>Grounding</span><strong>{selected.length ? `${selected.length} ${selected.length === 1 ? "reviewer" : "reviewers"}` : "Model knowledge"}</strong></div>
+                <div><span>Difficulty</span><strong>20% easy · 40% medium · 40% hard</strong></div>
+                <div><span>Calculations</span><strong>{calculationMode === "ONLY" ? "Computation only" : `Automatic · up to ${estimatedComputations}`}</strong></div>
+                <div><span>Session</span><strong>{timeLimit ? `${timeLimit} minutes` : "Untimed"} · {practice ? "Repeatable" : "Single attempt"}</strong></div>
+              </section>
               <div className={styles.generationNote}><Brain size={21} weight="duotone" /><div><strong>Generation continues in the background</strong><span>You can leave the page after starting. Alessence will validate every question before the exam becomes ready.</span></div></div>
               {error && <div className={styles.error} role="alert"><Info size={18} />{error}</div>}
             </div>
@@ -269,4 +361,15 @@ export function ExamWizard({
       </div>
     </div>
   );
+}
+
+function distributeQuestionTypes(count: number, selectedTypes: string[]) {
+  const distribution: Record<string, number> = {};
+  if (!selectedTypes.length) return distribution;
+  selectedTypes.forEach((type) => { distribution[type] = Math.floor(count / selectedTypes.length); });
+  for (let index = 0; index < count % selectedTypes.length; index++) {
+    const type = selectedTypes[index]!;
+    distribution[type] = (distribution[type] ?? 0) + 1;
+  }
+  return distribution;
 }

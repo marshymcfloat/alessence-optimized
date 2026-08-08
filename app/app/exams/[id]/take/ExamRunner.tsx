@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookmarkSimple, Check, Clock, PaperPlaneTilt, X } from "@phosphor-icons/react";
 import styles from "./exam-runner.module.css";
 
-type Question = { id: number; slot: number; text: string; type: string; options: unknown };
-type Attempt = { id: number; startedAt: string; exam: { id: number; description: string; timeLimit: number | null; questions: Question[] } };
+type Question = { id: number; slot: number; text: string; type: string; options: unknown; calculationMetadata?: { unit?: string | null; roundingInstruction?: string } | null };
+type Attempt = { id: number; startedAt: string; exam: { id: number; title: string; description: string; timeLimit: number | null; questions: Question[] } };
 
 export function ExamRunner({ attempt }: { attempt: Attempt }) {
   const router = useRouter();
+  const questionMapRef = useRef<HTMLDivElement>(null);
   const storageKey = `alessence-attempt-${attempt.id}`;
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>(() => loadDraft(storageKey).answers);
@@ -28,8 +29,9 @@ export function ExamRunner({ attempt }: { attempt: Attempt }) {
 
   useEffect(() => {
     document.body.classList.add("exam-mode");
+    router.prefetch(`/app/attempts/${attempt.id}`);
     return () => document.body.classList.remove("exam-mode");
-  }, []);
+  }, [attempt.id, router]);
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify({ answers, flagged }));
   }, [answers, flagged, storageKey]);
@@ -38,6 +40,16 @@ export function ExamRunner({ attempt }: { attempt: Attempt }) {
     const timer = window.setInterval(() => setRemaining((value) => value === null ? null : Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
   }, [remaining]);
+  useEffect(() => {
+    const map = questionMapRef.current;
+    const active = map?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (!map || !active || map.scrollWidth <= map.clientWidth) return;
+
+    map.scrollTo({
+      left: active.offsetLeft - (map.clientWidth - active.offsetWidth) / 2,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
+  }, [index]);
 
   function answer(value: string) {
     setAnswers((current) => ({ ...current, [question.id]: value }));
@@ -66,14 +78,13 @@ export function ExamRunner({ attempt }: { attempt: Attempt }) {
     }
     localStorage.removeItem(storageKey);
     router.replace(`/app/attempts/${attempt.id}`);
-    router.refresh();
   }
 
   return (
     <div className={styles.runner}>
       <header className={styles.topbar}>
         <button className={styles.leaveButton} onClick={() => router.push(`/app/exams/${attempt.exam.id}`)}><ArrowLeft size={17} weight="bold" /> Leave exam</button>
-        <div className={styles.examIdentity}><span>In progress</span><strong>{attempt.exam.description}</strong></div>
+        <div className={styles.examIdentity}><span>In progress</span><strong>{attempt.exam.title}</strong></div>
         {remaining !== null ? <div className={`${styles.timer} ${remaining <= 300 ? styles.timerUrgent : ""}`}><Clock size={17} /><span>{formatTime(remaining)}</span></div> : <span className={styles.untimed}><Clock size={16} /> Untimed</span>}
       </header>
 
@@ -92,10 +103,13 @@ export function ExamRunner({ attempt }: { attempt: Attempt }) {
           <article className={styles.questionCard}>
             <p>{formatLabel(question.type)}</p>
             <h1 id="question-title">{question.text}</h1>
-            {question.type === "IDENTIFICATION" ? (
+            {question.type === "IDENTIFICATION" || question.type === "NUMERIC" ? (
               <label className={styles.textAnswer} htmlFor="identification-answer">
                 <span>Your answer</span>
-                <textarea id="identification-answer" value={answers[question.id] ?? ""} onChange={(event) => answer(event.target.value)} placeholder="Type your answer here" autoFocus />
+                {question.type === "NUMERIC"
+                  ? <input id="identification-answer" name={`exam-answer-${attempt.id}-${question.id}`} type="text" inputMode="decimal" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} data-1p-ignore data-lpignore="true" value={answers[question.id] ?? ""} onChange={(event) => answer(event.target.value)} placeholder={question.calculationMetadata?.unit ? `Enter value in ${question.calculationMetadata.unit}` : "Enter the calculated value"} autoFocus />
+                  : <textarea id="identification-answer" name={`exam-answer-${attempt.id}-${question.id}`} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} data-1p-ignore data-lpignore="true" value={answers[question.id] ?? ""} onChange={(event) => answer(event.target.value)} placeholder="Type your answer here" autoFocus />}
+                {question.type === "NUMERIC" && question.calculationMetadata?.roundingInstruction && <small>{question.calculationMetadata.roundingInstruction}</small>}
               </label>
             ) : (
               <div className={styles.options} role="group" aria-label="Answer choices">
@@ -118,7 +132,7 @@ export function ExamRunner({ attempt }: { attempt: Attempt }) {
 
         <aside className={styles.navigator}>
           <div className={styles.navigatorHead}><div><span>Question map</span><strong>Your progress</strong></div><b>{completion}%</b></div>
-          <div className={styles.questionMap}>
+          <div className={styles.questionMap} ref={questionMapRef}>
             {attempt.exam.questions.map((item, itemIndex) => {
               const hasAnswer = Boolean(answers[item.id]?.trim());
               const hasFlag = flagged.includes(item.id);
@@ -131,14 +145,14 @@ export function ExamRunner({ attempt }: { attempt: Attempt }) {
       </main>
 
       {confirming && (
-        <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setConfirming(false)}>
+        <div className={styles.dialogBackdrop} role="presentation" onMouseDown={(event) => !pending && event.target === event.currentTarget && setConfirming(false)}>
           <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="submit-title">
-            <button className={styles.closeDialog} aria-label="Close submission review" onClick={() => setConfirming(false)}><X size={18} /></button>
+            <button className={styles.closeDialog} aria-label="Close submission review" disabled={pending} onClick={() => setConfirming(false)}><X size={18} /></button>
             <span className={styles.dialogIcon}><PaperPlaneTilt size={22} weight="duotone" /></span>
             <p>Submission check</p><h2 id="submit-title">Ready to finish?</h2>
             <div className={styles.submitSummary}><span><b>{answered}</b> answered</span><span><b>{attempt.exam.questions.length - answered}</b> unanswered</span><span><b>{flagged.length}</b> flagged</span></div>
             <p className={styles.dialogCopy}>Unanswered questions will be marked incorrect. You cannot change answers after submitting.</p>
-            <div className={styles.dialogActions}><button onClick={() => setConfirming(false)}>Keep reviewing</button><button disabled={pending} onClick={submit}>{pending ? "Submitting…" : "Submit exam"}</button></div>
+            <div className={styles.dialogActions}><button disabled={pending} onClick={() => setConfirming(false)}>Keep reviewing</button><button disabled={pending} onClick={submit}>{pending ? "Sending answers…" : "Submit exam"}</button></div>
           </section>
         </div>
       )}

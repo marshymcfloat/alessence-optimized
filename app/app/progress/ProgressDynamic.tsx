@@ -5,9 +5,12 @@ import {
 import { formatDate, percent } from "@/lib/format";
 import { progressPageData } from "./progress-data";
 import styles from "./progress.module.css";
+import type { StudyPeriod } from "@/lib/study-period";
 
-export async function ProgressHeaderStats() {
-  const progress = await progressPageData();
+type PeriodProps = { period: StudyPeriod };
+
+export async function ProgressHeaderStats({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   return (
     <div className={styles.headerStats} aria-label="Progress summary">
       <div><strong>{percent(progress.averageScore)}</strong><span>Average</span></div>
@@ -17,13 +20,13 @@ export async function ProgressHeaderStats() {
   );
 }
 
-export async function TrendBadge() {
-  const progress = await progressPageData();
+export async function TrendBadge({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   return <span className={styles.trendBadge}><TrendUp size={16} /> Last {progress.recentAttempts.length}</span>;
 }
 
-export async function ScoreTrend() {
-  const progress = await progressPageData();
+export async function ScoreTrend({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   const trend = [...progress.recentAttempts].reverse();
   const points = trendPoints(trend.map((attempt) => attempt.score));
 
@@ -51,8 +54,8 @@ export async function ScoreTrend() {
   );
 }
 
-export async function PracticeRecommendation() {
-  const progress = await progressPageData();
+export async function PracticeRecommendation({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   const hasWeakTopics = progress.weakTopics.length > 0;
   return (
     <div className={styles.practiceContent}>
@@ -64,8 +67,8 @@ export async function PracticeRecommendation() {
   );
 }
 
-export async function WeakTopics() {
-  const progress = await progressPageData();
+export async function WeakTopics({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   const maxMisses = Math.max(...progress.weakTopics.map((topic) => topic.misses), 1);
   return (
     <div className={styles.topicList}>
@@ -80,14 +83,14 @@ export async function WeakTopics() {
   );
 }
 
-export async function BestScore() {
-  const progress = await progressPageData();
+export async function BestScore({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   const strongest = progress.recentAttempts.reduce<(typeof progress.recentAttempts)[number] | null>((best, attempt) => !best || attempt.score > best.score ? attempt : best, null);
   return strongest ? <span className={styles.bestScore}>Best {percent(strongest.score)}</span> : null;
 }
 
-export async function RecentAttempts() {
-  const progress = await progressPageData();
+export async function RecentAttempts({ period }: PeriodProps) {
+  const progress = await progressPageData(period);
   return (
     <div className={styles.attemptList}>
       {progress.recentAttempts.map((attempt, index) => (

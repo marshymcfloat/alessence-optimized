@@ -31,7 +31,7 @@ export default async function LoginPage() {
           </div>
         </div>
         <div className={styles.mascot} aria-hidden="true">
-          <Image src="/mascots/greet-mascot.png" alt="" width={378} height={675} priority />
+          <Image src="/mascots/greet-mascot-exam-style-v2.png" alt="" width={1024} height={1536} priority />
         </div>
         <p className={styles.sideNote}>A study workspace made for one learner.</p>
       </section>

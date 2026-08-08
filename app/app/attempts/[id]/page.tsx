@@ -1,52 +1,140 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, CheckCircle, XCircle } from "@phosphor-icons/react/dist/ssr";
+import {
+  ArrowLeft, ArrowRight, CalendarBlank, CheckCircle, Question,
+  Target, TrendUp, XCircle,
+} from "@phosphor-icons/react/dist/ssr";
 import { requirePageUser } from "@/features/auth/page-session";
-import { attemptDetails } from "@/features/exams/history-service";
+import { attemptDetails, attemptReviewState } from "@/features/exams/history-service";
 import { formatDate, percent } from "@/lib/format";
+import { AttemptReviewing } from "./AttemptReviewing";
+import styles from "./attempt-results.module.css";
 
 export const metadata: Metadata = { title: "Exam results" };
 
-export default async function AttemptResultsPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function AttemptResultsPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requirePageUser();
   const { id } = await params;
-  const attempt = await attemptDetails(Number(id), user.id);
+  const attemptId = Number(id);
+  const reviewState = await attemptReviewState(attemptId, user.id);
+  if (reviewState.status === "IN_PROGRESS") redirect(`/app/exams/${reviewState.examId}/take?attempt=${attemptId}`);
+  if (reviewState.status === "ABANDONED") redirect(`/app/exams/${reviewState.examId}`);
+  if (reviewState.status !== "COMPLETED") {
+    return <AttemptReviewing attemptId={attemptId} initialStatus={reviewState.status} examDescription={reviewState.examDescription} subjectTitle={reviewState.subjectTitle} />;
+  }
+  const attempt = await attemptDetails(attemptId, user.id);
   const correct = attempt.questions.filter((question) => question.isCorrect).length;
+  const incorrect = attempt.questions.length - correct;
   const score = attempt.score ?? 0;
+  const topics = weakTopics(attempt.questions);
+  const mascot = {
+    src: "/mascots/exam-planner-mascot-v2.png",
+    alt: "Alessence mascot holding an exam planner",
+    width: 1536,
+    height: 1024,
+  };
+
   return (
-    <>
-      <header className="page-head">
-        <div><p className="eyebrow">{attempt.exam.subject.title}</p><h1 className="serif">Exam results</h1><p>{attempt.exam.description} · completed {attempt.completedAt ? formatDate(attempt.completedAt) : "recently"}</p></div>
+    <main className={styles.page}>
+      <Link className={styles.backLink} href={`/app/exams/${attempt.exam.id}`}><ArrowLeft size={16} weight="bold" /> Back to exam</Link>
+
+      <header className={`${styles.hero} ${styles[scoreTone(score)]}`}>
+        <div className={styles.heroCopy}>
+          <span className={styles.subject}>{attempt.exam.subject.title}</span>
+          <span className={styles.grounding}>{attempt.exam.groundingMode === "SOURCES" ? "Source-grounded" : "Model knowledge"}</span>
+          <p className={styles.kicker}>Attempt complete</p>
+          <h1>Exam results</h1>
+          <p className={styles.examTitle}>{attempt.exam.title}</p>
+          <span className={styles.completed}><CalendarBlank size={15} /> Completed {attempt.completedAt ? formatDate(attempt.completedAt) : "recently"}</span>
+        </div>
+
+        <div className={styles.scoreBlock}>
+          <span>Your score</span>
+          <strong>{percent(score)}</strong>
+          <p>{resultCopy(score)}</p>
+        </div>
+
+        <Image className={styles.mascot} src={mascot.src} alt={mascot.alt} width={mascot.width} height={mascot.height} priority sizes="(max-width: 760px) 42vw, 260px" />
       </header>
-      <div className="dashboard-grid">
-        <section className="panel panel-soft">
-          <p className="eyebrow">Your score</p>
-          <div className="serif tabular" style={{ fontSize: "clamp(4rem, 18vw, 7rem)", lineHeight: ".9", letterSpacing: "-.07em", color: "var(--aubergine)" }}>{percent(score)}</div>
-          <p className="muted" style={{ marginTop: "1rem" }}>{correct} of {attempt.questions.length} correct. {resultCopy(score)}</p>
-          <div className="button-row"><Link className="button" href="/app/progress">Review progress <ArrowRight size={17} /></Link><Link className="button secondary" href={`/app/exams/${attempt.exam.id}`}>Back to exam</Link></div>
-        </section>
-        <aside className="panel">
-          <p className="eyebrow">What to review next</p>
-          {weakTopics(attempt.questions).map(([topic, misses]) => <div className="list-row row row-between" key={topic}><strong>{topic}</strong><span className="status failed">{misses} missed</span></div>)}
-          {!weakTopics(attempt.questions).length && <p className="muted">No weak topic was identified in this attempt.</p>}
+
+      <section className={styles.overview} aria-label="Attempt summary">
+        <div className={styles.summaryCard}>
+          <div className={styles.summaryHeading}><div><span>Performance</span><h2>At a glance</h2></div><TrendUp size={21} weight="duotone" /></div>
+          <div className={styles.metrics}>
+            <div><span className={styles.correctIcon}><CheckCircle size={19} weight="fill" /></span><strong>{correct}</strong><small>Correct</small></div>
+            <div><span className={styles.wrongIcon}><XCircle size={19} weight="fill" /></span><strong>{incorrect}</strong><small>To review</small></div>
+            <div><span className={styles.totalIcon}><Question size={19} weight="duotone" /></span><strong>{attempt.questions.length}</strong><small>Total</small></div>
+          </div>
+          <div className={styles.actions}>
+            <Link href={`/app/exams/${attempt.exam.id}`}>Practice again <ArrowRight size={16} weight="bold" /></Link>
+            <Link href="/app/progress">View progress</Link>
+          </div>
+        </div>
+
+        <aside className={styles.focusCard}>
+          <div className={styles.summaryHeading}><div><span>Next focus</span><h2>Topics to revisit</h2></div><Target size={21} weight="duotone" /></div>
+          {topics.length ? (
+            <div className={styles.topicList}>{topics.map(([topic, misses], index) => <div key={topic}><span>{String(index + 1).padStart(2, "0")}</span><strong>{topic}</strong><small>{misses} {misses === 1 ? "miss" : "misses"}</small></div>)}</div>
+          ) : (
+            <div className={styles.clearState}><CheckCircle size={25} weight="duotone" /><span><strong>No weak topic found</strong><small>This attempt shows balanced coverage.</small></span></div>
+          )}
         </aside>
-      </div>
-      <section>
-        <div className="section-head"><h2>Answer review</h2><span className="help">{attempt.questions.length} questions</span></div>
-        <div className="panel">
+      </section>
+
+      <section className={styles.review} aria-labelledby="answer-review-title">
+        <div className={styles.sectionHead}>
+          <div><span>Question by question</span><h2 id="answer-review-title">Answer review</h2></div>
+          <strong>{attempt.questions.length} questions</strong>
+        </div>
+
+        <div className={styles.answerGrid}>
           {attempt.questions.map((question, index) => (
-            <article className="list-row" key={question.id} style={{ display: "block", paddingBlock: "1.25rem" }}>
-              <div className="row"><span className="icon-tile" style={{ color: question.isCorrect ? "var(--sage)" : "var(--rust)" }}>{question.isCorrect ? <CheckCircle size={22} weight="fill" /> : <XCircle size={22} weight="fill" />}</span><div className="row-copy"><span className="help">Question {index + 1} · {question.topicLabel ?? "General"}</span><strong style={{ whiteSpace: "normal", marginTop: ".2rem" }}>{question.text}</strong></div></div>
-              <div style={{ margin: ".9rem 0 0 3.5rem" }}><p className="help">Your answer</p><p>{question.userAnswer || "No answer"}</p>{!question.isCorrect && <><p className="help">Correct answer</p><p><strong>{question.correctAnswer}</strong></p></>}<p className="muted">{question.feedback ?? question.explanation}</p>{Array.isArray(question.sourceCitations) && question.sourceCitations.length > 0 && <details><summary className="help" style={{ cursor: "pointer" }}>View source support</summary><div className="notice" style={{ marginTop: ".6rem" }}>{(question.sourceCitations as Array<{ quote?: string }>).map((citation) => citation.quote).filter(Boolean).join(" · ")}</div></details>}</div>
+            <article className={`${styles.answerCard} ${question.isCorrect ? styles.answerCorrect : styles.answerWrong}`} key={question.id}>
+              <div className={styles.questionHead}>
+                <span className={styles.questionNumber}>{String(index + 1).padStart(2, "0")}</span>
+                <div><small>{question.topicLabel ?? "General coverage"}</small><strong>{question.isCorrect ? "Correct" : "Review"}</strong></div>
+                {question.isCorrect ? <CheckCircle size={20} weight="fill" /> : <XCircle size={20} weight="fill" />}
+              </div>
+
+              <h3>{question.text}</h3>
+
+              <div className={styles.answerDetails}>
+                <div className={styles.userAnswer}><span>Your answer</span><p>{question.userAnswer || "No answer"}</p></div>
+                {!question.isCorrect && <div className={styles.correctAnswer}><span>Correct answer</span><p>{question.correctAnswer}</p></div>}
+              </div>
+
+              {(question.feedback ?? question.explanation) && (
+                <div className={styles.feedback}><span>Explanation</span><p>{question.feedback ?? question.explanation}</p></div>
+              )}
+
+              {question.isComputational && question.calculationMetadata && typeof question.calculationMetadata === "object" && !Array.isArray(question.calculationMetadata) && (
+                <details className={styles.sources}>
+                  <summary>View calculation</summary>
+                  <div>
+                    {Array.isArray((question.calculationMetadata as { steps?: unknown }).steps) && (question.calculationMetadata as { steps: unknown[] }).steps.map((step, stepIndex) => <p key={stepIndex}>{stepIndex + 1}. {String(step)}</p>)}
+                    <strong>{String((question.calculationMetadata as { roundingInstruction?: unknown }).roundingInstruction ?? "")}</strong>
+                  </div>
+                </details>
+              )}
+
+              {Array.isArray(question.sourceCitations) && question.sourceCitations.length > 0 && (
+                <details className={styles.sources}>
+                  <summary>View source support</summary>
+                  <div>{(question.sourceCitations as Array<{ chunkId?: number; fileName?: string; locator?: string | null; quote?: string }>).map((citation, citationIndex) => (
+                    <div key={`${citation.chunkId ?? "citation"}-${citationIndex}`}>
+                      <strong>{citation.fileName ?? "Source material"}{citation.locator ? ` — ${citation.locator}` : ""}</strong>
+                      {citation.quote && <p>“{citation.quote}”</p>}
+                    </div>
+                  ))}</div>
+                </details>
+              )}
             </article>
           ))}
         </div>
       </section>
-    </>
+    </main>
   );
 }
 
@@ -56,11 +144,17 @@ function resultCopy(score: number) {
   return "Review the missed topics before trying another set.";
 }
 
+function scoreTone(score: number) {
+  if (score >= 90) return "highScore";
+  if (score >= 75) return "mediumScore";
+  return "reviewScore";
+}
+
 function weakTopics(questions: Array<{ isCorrect: boolean; topicLabel: string | null }>) {
   const counts = new Map<string, number>();
   questions.filter((question) => !question.isCorrect).forEach((question) => {
     const topic = question.topicLabel ?? "General";
     counts.set(topic, (counts.get(topic) ?? 0) + 1);
   });
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
+  return [...counts.entries()].sort((left, right) => right[1] - left[1]).slice(0, 4);
 }

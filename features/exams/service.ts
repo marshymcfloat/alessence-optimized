@@ -8,9 +8,26 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { ApiError } from "@/lib/http";
 import { inngest } from "@/inngest/client";
-import { ingestFiles, assertReadyFiles } from "@/features/materials/service";
+import { assertReadyFiles } from "@/features/materials/service";
 import type { CreateExamInput } from "./contracts";
+import { resolveExamFocus, resolveExamTitle } from "./focus";
 import { PROMPT_VERSION } from "./generation-schemas";
+import { academicYearForPeriod, type StudyPeriod } from "@/lib/study-period";
+import { scoreComputationalEvidence, STRONG_COMPUTATION_SCORE } from "./computation";
+
+async function ensureComputationScores(fileIds: number[]) {
+  if (!fileIds.length) return;
+  const chunks = await db.documentChunk.findMany({
+    where: { fileId: { in: fileIds }, computationScored: false },
+    select: { id: true, text: true },
+  });
+  for (let index = 0; index < chunks.length; index += 100) {
+    await db.$transaction(chunks.slice(index, index + 100).map((chunk) => db.documentChunk.update({
+      where: { id: chunk.id },
+      data: { computationScore: scoreComputationalEvidence(chunk.text), computationScored: true },
+    })));
+  }
+}
 
 export async function createExam(
   input: CreateExamInput,
@@ -19,14 +36,14 @@ export async function createExam(
 ) {
   const subject = await db.subject.findFirst({
     where: { id: input.subjectId, userId },
-    select: { id: true },
+    select: { id: true, title: true },
   });
   if (!subject) throw new ApiError(404, "Subject not found.", "SUBJECT_NOT_FOUND");
-  const uploaded = newFiles.length
-    ? await ingestFiles(newFiles, userId, input.subjectId)
-    : [];
+  if (newFiles.length) {
+    throw new ApiError(400, "Upload new source files from Materials and wait for indexing before creating an exam.", "SOURCES_PROCESSING");
+  }
   const fileIds = await assertReadyFiles(
-    [...input.existingFileIds, ...uploaded.map((file) => file.id)],
+    input.existingFileIds,
     userId,
     input.subjectId,
   );
@@ -37,19 +54,40 @@ export async function createExam(
       "SOURCES_REQUIRED",
     );
   }
+  const compatibleTypes = input.questionTypes.filter((type) => type === "MULTIPLE_CHOICE" || type === "NUMERIC");
+  await ensureComputationScores(fileIds);
+  if (input.calculationMode === "ONLY") {
+    if (!fileIds.length) throw new ApiError(400, "Computation-only exams require ready source materials.", "SOURCES_REQUIRED");
+    if (!compatibleTypes.length || compatibleTypes.length !== input.questionTypes.length) {
+      throw new ApiError(400, "Computation-only exams support multiple-choice and numeric-answer questions only.", "VALIDATION_ERROR");
+    }
+    const strongChunks = await db.documentChunk.count({ where: { fileId: { in: fileIds }, computationScore: { gte: STRONG_COMPUTATION_SCORE } } });
+    if (strongChunks * 2 < input.requestedItems) {
+      throw new ApiError(422, "The selected reviewers do not contain enough formulas or worked examples for this many computation questions. Select more suitable reviewers or request fewer items.", "INSUFFICIENT_COMPUTATION_EVIDENCE");
+    }
+  }
   const groundingMode: GroundingMode = fileIds.length
     ? "SOURCES"
     : "MODEL_KNOWLEDGE";
+  const focus = resolveExamFocus({
+    description: input.description,
+    focusMode: input.focusMode,
+    subjectTitle: subject.title,
+    hasSources: fileIds.length > 0,
+  });
+  const title = resolveExamTitle({ title: input.title, subjectTitle: subject.title, focusMode: input.focusMode });
   const result = await db.$transaction(async (tx) => {
     const exam = await tx.exam.create({
       data: {
-        description: input.description,
+        title,
+        description: focus.value,
         requestedItems: input.requestedItems,
         status: ExamStatusEnum.GENERATING,
         subjectId: input.subjectId,
         questionTypes: input.questionTypes as QuestionTypeEnum[],
         isPracticeMode: input.isPracticeMode,
         emphasizeWeakTopics: input.emphasizeWeakTopics,
+        calculationMode: input.calculationMode,
         timeLimit: input.timeLimit,
         userId,
         sourceFiles: { connect: fileIds.map((id) => ({ id })) },
@@ -59,7 +97,7 @@ export async function createExam(
       data: {
         examId: exam.id,
         version: 1,
-        model: env().GEMINI_MODEL,
+        model: env().OPENAI_MODEL,
         promptVersion: PROMPT_VERSION,
         groundingMode,
       },
@@ -120,7 +158,7 @@ export async function retryGeneration(examId: number, userId: string) {
       data: {
         examId,
         version: (prior?.version ?? 0) + 1,
-        model: env().GEMINI_MODEL,
+        model: env().OPENAI_MODEL,
         promptVersion: PROMPT_VERSION,
         groundingMode,
       },
@@ -147,12 +185,14 @@ export async function retryGeneration(examId: number, userId: string) {
   return { examId, generationId: result.id, status: "GENERATING" as const };
 }
 
-export async function listExams(userId: string, subjectId?: number) {
+export async function listExams(userId: string, subjectId?: number, period: StudyPeriod = "current") {
+  const academicYear = academicYearForPeriod(period);
   return db.exam.findMany({
-    where: { userId, ...(subjectId ? { subjectId } : {}) },
+    where: { userId, ...(subjectId ? { subjectId } : {}), ...(academicYear ? { academicYear } : {}) },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
+      title: true,
       description: true,
       requestedItems: true,
       status: true,
@@ -177,6 +217,7 @@ export async function getExam(examId: number, userId: string) {
     where: { id: examId, userId },
     select: {
       id: true,
+      title: true,
       description: true,
       requestedItems: true,
       status: true,
@@ -222,6 +263,9 @@ export function parseCreateExamForm(form: FormData) {
   const existingFileIds = form.getAll("existingFileIds").map(Number);
   return {
     description: String(form.get("description") ?? ""),
+    title: String(form.get("title") ?? ""),
+    focusMode: String(form.get("focusMode") ?? "BALANCED"),
+    calculationMode: String(form.get("calculationMode") ?? "AUTO"),
     requestedItems: Number(form.get("requestedItems")),
     subjectId: Number(form.get("subjectId")),
     questionTypes,

@@ -33,7 +33,7 @@ export default function HomePage() {
           <h2 id="welcome-title">Let’s make today’s study session count.</h2>
           <Suspense fallback={<WelcomeActionSkeleton />}><WelcomeStudyAction /></Suspense>
         </div>
-        <div className={styles.welcomeArt} aria-hidden="true"><span className={styles.artDotOne} /><span className={styles.artDotTwo} /><Image src="/mascots/greet-mascot.png" alt="" width={376} height={651} priority sizes="(max-width: 420px) 171px, (max-width: 900px) 29vw, 312px" /></div>
+        <div className={styles.welcomeArt} aria-hidden="true"><span className={styles.artDotOne} /><span className={styles.artDotTwo} /><Image src="/mascots/greet-mascot-exam-style-v2.png" alt="" width={1024} height={1536} priority sizes="(max-width: 420px) 171px, (max-width: 900px) 29vw, 312px" /></div>
       </section>
 
       <section className={styles.quickSection} aria-labelledby="quick-title" data-dashboard-section>
@@ -51,7 +51,7 @@ export default function HomePage() {
             <div className={styles.focusTopline}><span><Target size={17} weight="fill" /> Recommended next</span><Suspense fallback={<FocusStateSkeleton />}><FocusExamState /></Suspense></div>
             <div className={styles.focusBody}>
               <Suspense fallback={<FocusContentSkeleton />}><FocusExamContent /></Suspense>
-              <div className={styles.focusMascot} aria-hidden="true"><Image src="/mascots/welcome-mascot.png" alt="" width={664} height={1450} sizes="(max-width: 680px) 107px, (max-width: 900px) 160px, 184px" /></div>
+              <div className={styles.focusMascot} aria-hidden="true"><Image src="/mascots/welcome-mascot-v4.png" alt="" width={941} height={1672} sizes="(max-width: 680px) 107px, (max-width: 900px) 160px, 184px" /></div>
             </div>
           </section>
 

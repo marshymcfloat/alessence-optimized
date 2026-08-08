@@ -18,6 +18,8 @@ export const materialSummarySchema = z.object({
   size: z.number(),
   type: z.enum(["PDF", "DOCX", "TEXT"]),
   ingestionStatus: z.enum(["PROCESSING", "READY", "FAILED"]),
+  ingestionError: z.string().nullable(),
+  indexedAt: z.string().nullable(),
   createdAt: z.string(),
   subject: z.object({ id: z.number(), title: z.string() }).nullable(),
   examCount: z.number(),
