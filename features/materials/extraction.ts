@@ -1,5 +1,4 @@
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 import type { AcceptedFileType } from "@prisma/client";
 import { ApiError } from "@/lib/http";
 import type { DocumentSection } from "./chunking";
@@ -58,6 +57,10 @@ export function sectionsFromPlainText(text: string): DocumentSection[] {
 }
 
 async function extractPdf(buffer: Buffer): Promise<ExtractedDocument> {
+  // pdfjs expects browser geometry globals during module initialization.
+  // pdf-parse's worker entry installs their Node canvas implementations.
+  await import("pdf-parse/worker");
+  const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse(new Uint8Array(buffer));
   try {
     const result = await parser.getText();
