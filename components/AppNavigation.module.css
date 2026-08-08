@@ -76,6 +76,9 @@
 .mobileNav .navLink::before, .mobileNav .linkArrow { display: none; }
 .mobileNav .iconWrap { width: 2rem; border-radius: 10px; background: transparent; }
 .mobileNav .navLink.active { background: #f1eafa; box-shadow: none; }
+.mobileSignOut { border: 0; background: transparent; cursor: pointer; font-family: inherit; }
+.mobileSignOut .iconWrap { color: #8d5550; }
+.mobileSignOut:active { color: #8d4540; background: #f8e9e6; }
 
 @media (prefers-reduced-motion: reduce) {
   .createCard, .navLink, .linkArrow { transition: none; }

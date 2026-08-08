@@ -78,7 +78,13 @@ export function AppNavigation({ user }: AppNavigationProps) {
           </button>
         </div>
       </aside>
-      <nav className={`mobile-nav ${styles.mobileNav}`} aria-label="Primary"><NavLinks /></nav>
+      <nav className={`mobile-nav ${styles.mobileNav}`} aria-label="Primary">
+        <NavLinks />
+        <button className={`${styles.navLink} ${styles.mobileSignOut}`} type="button" onClick={signOut}>
+          <span className={styles.iconWrap}><SignOut size={20} aria-hidden="true" /></span>
+          <span>Logout</span>
+        </button>
+      </nav>
     </>
   );
 }

@@ -176,7 +176,7 @@ p { text-wrap: pretty; }
 .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
 
 .mobile-nav {
-  position: fixed; z-index: 30; inset: auto 0 0; display: grid; grid-template-columns: repeat(4, 1fr);
+  position: fixed; z-index: 30; inset: auto 0 0; display: grid; grid-template-columns: repeat(5, 1fr);
   padding: 0.45rem 0.5rem calc(0.4rem + env(safe-area-inset-bottom));
   background: rgba(252,250,247,.96); border-top: 1px solid var(--line); backdrop-filter: blur(14px);
 }
